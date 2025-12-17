@@ -7,7 +7,3 @@ airflow/plugins
 data/app.db
 
 data/*.db
-
-docker-compose.yaml
-
-DockerFile
