@@ -1,0 +1,13 @@
+__pycache__/
+
+airflow/logs
+
+airflow/plugins
+
+data/app.db
+
+data/*.db
+
+docker-compose.yaml
+
+DockerFile
