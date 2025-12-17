@@ -7,3 +7,11 @@ airflow/plugins
 data/app.db
 
 data/*.db
+
+.idea
+# Default ignored files
+/shelf/
+/workspace.xml
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
