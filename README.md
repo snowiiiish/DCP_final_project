@@ -5,8 +5,6 @@ Data Collection &amp; Preparation. Final Project
 
 **Team:** DCP Team  
 
----
-
 ## 1. Project Goal
 This project demonstrates a complete end-to-end data pipeline that collects, cleans, stores, and analyzes real-time Carbon Intensity data from the UK National Grid.
 
@@ -88,3 +86,8 @@ project/
     ```
 4.  **Access UI:** Open `http://localhost:8080` (Username: admin ; Password: admin).
 5.  **Trigger DAGs:** Enable `job1_ingestion_dag` to start data collection.
+
+## 7. Kafka topic
+```bash
+    docker-compose exec kafka kafka-console-consumer --bootstrap-server kafka:29092 --topic raw_events --from-beginning
+```
