@@ -1,6 +1,7 @@
 import json
 import time
 import logging
+import pandas as pd
 from kafka import KafkaConsumer
 from db_utils import get_db_connection, init_db
 
@@ -21,32 +22,29 @@ def get_consumer(servers):
     )
 
 def run_cleaning_job(kafka_servers):
-    logger.info("--- Starting Hourly Cleaning Job ---")
+    logger.info("--- Starting Hourly Cleaning Job (Pandas Edition) ---")
 
     init_db()
     
     consumer = get_consumer(kafka_servers)
     
-    messages_processed = 0
-    data_to_insert = []
+    raw_data_list = []
     
     try:
         for message in consumer:
             raw_val = message.value
-            
             try:
-                payload = raw_val['payload']['intensity']
-
-                clean_record = (
-                    raw_val.get('timestamp'),       
-                    payload.get('forecast'),
-                    payload.get('actual'),
-                    payload.get('index'),
-                    raw_val.get('source', 'unknown')
-                )
-                data_to_insert.append(clean_record)
-                messages_processed += 1
-            except KeyError as e:
+                payload = raw_val.get('payload', {}).get('intensity', {})
+                
+                row = {
+                    'ingestion_timestamp': raw_val.get('timestamp'),
+                    'forecast_intensity': payload.get('forecast'),
+                    'actual_intensity': payload.get('actual'),
+                    'index_intensity': payload.get('index'),
+                    'source': raw_val.get('source', 'unknown')
+                }
+                raw_data_list.append(row)
+            except Exception as e:
                 logger.warning(f"Skipping malformed message: {e}")
                 
     except Exception as e:
@@ -54,18 +52,35 @@ def run_cleaning_job(kafka_servers):
     finally:
         consumer.close()
 
-    if data_to_insert:
+    if raw_data_list:
+        df = pd.DataFrame(raw_data_list)
+        initial_count = len(df)
+        
+        df = df.dropna(subset=['forecast_intensity'])
+        
+        df = df.drop_duplicates()
+        
+        if 'index_intensity' in df.columns:
+            df['index_intensity'] = df['index_intensity'].astype(str).str.lower().str.strip()
+        
+        if 'source' in df.columns:
+            df['source'] = df['source'].astype(str).str.lower().str.strip()
+
+        df['forecast_intensity'] = pd.to_numeric(df['forecast_intensity'], errors='coerce')
+        df['actual_intensity'] = pd.to_numeric(df['actual_intensity'], errors='coerce')
+        
+        df['ingestion_timestamp'] = pd.to_datetime(df['ingestion_timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        logger.info(f"Cleaning Stats: {initial_count} raw -> {len(df)} cleaned.")
+
         conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.executemany('''
-            INSERT INTO events (ingestion_timestamp, forecast_intensity, actual_intensity, index_intensity, source)
-            VALUES (?, ?, ?, ?, ?)
-        ''', data_to_insert)
-        
-        conn.commit()
-        conn.close()
-        logger.info(f"SUCCESS: Cleaned and stored {len(data_to_insert)} records into SQLite.")
+        try:
+            df.to_sql('events', conn, if_exists='append', index=False)
+            logger.info(f"SUCCESS: Stored {len(df)} records into SQLite.")
+        except Exception as e:
+            logger.error(f"Database insertion failed: {e}")
+        finally:
+            conn.close()
     else:
         logger.info("No new messages to process.")
 
